@@ -80,14 +80,14 @@ func addItem(w http.ResponseWriter, r *http.Request) {
 	b, err := ioutil.ReadAll(r.Body)
 	defer r.Body.Close()
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	var item Item
 	err = json.Unmarshal(b, &item)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -114,28 +114,28 @@ func removeItem(w http.ResponseWriter, r *http.Request) {
 	b, err := ioutil.ReadAll(r.Body)
 	defer r.Body.Close()
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	var remove RemoveJson
 	err = json.Unmarshal(b, &remove)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	uuid := r.Header.Get("uuid")
 	username := r.Header.Get("username")
 	if GetCoins(uuid) == 0 {
-		io.WriteString(w, goutils.ToJson(ErrorResponse{"Not enough coins"}))
+		http.Error(w, "Not enough coins", http.StatusForbidden)
 		return
 	}
 
 	removedItem := Item{}
 	err = DataBase.Read("items", remove.UUID, &removedItem)
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
