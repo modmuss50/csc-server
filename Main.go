@@ -10,21 +10,24 @@ import (
 	"time"
 	"math/rand"
 	"fmt"
-	"errors"
+	"github.com/nanobox-io/golang-scribble"
 )
 
+//Databse help: https://medium.com/@skdomino/scribble-a-tiny-json-database-in-golang-9817854deb05
+
 var (
-	Info = Data{}
+	DataBase *scribble.Driver
 )
 
 func main() {
 
 	fmt.Println("Loading Cross Server Storage - Server")
 
-	Load()
+	db, _ := scribble.New("./db", nil)
+	DataBase = db
 
-	//Info.ItemList = append(Info.ItemList, Item{RegName:"minecraft:stone", StackSize:32, ModID:"minecraft", UUID:"123"})
-	//Save()
+	//item := Item{RegName:"Test", UUID:"123"}
+	//DataBase.Write("items", item.UUID, item)
 
 	middleware := stats.New()
 	mux := http.NewServeMux()
@@ -43,7 +46,7 @@ func main() {
 }
 
 func listItems(w http.ResponseWriter, r *http.Request) {
-	io.WriteString(w, goutils.ToJson(Info))
+	io.WriteString(w, goutils.ToJson(ListItems()))
 }
 
 func addItem(w http.ResponseWriter, r *http.Request) {
@@ -65,9 +68,10 @@ func addItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Generates a random string for the item to aid with removing
-	item.UUID = RandString(16, int64(len(Info.ItemList)))
+	items := ListItems()
+	item.UUID = RandString(16, int64(len(items)))
 
-	Info.ItemList = append(Info.ItemList, item)
+	DataBase.Write("items", item.UUID, item)
 
 	uuid := r.Header.Get("uuid")
 	username := r.Header.Get("username")
@@ -75,9 +79,6 @@ func addItem(w http.ResponseWriter, r *http.Request) {
 	Log(uuid + "(" + username + ") added " + item.UUID + " to the list")
 
 	io.WriteString(w, goutils.ToJson(item))
-
-	//Humm, might not want to do this after every request
-	Save()
 }
 
 func removeItem(w http.ResponseWriter, r *http.Request) {
@@ -101,18 +102,30 @@ func removeItem(w http.ResponseWriter, r *http.Request) {
 	uuid := r.Header.Get("uuid")
 	username := r.Header.Get("username")
 
-	removedItem, err := DeleteItem(remove.UUID)
+	removedItem := Item{}
+	err = DataBase.Read("items", remove.UUID, &removedItem)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 
+	DataBase.Delete("items", remove.UUID)
+
 	Log(uuid + "(" + username + ") removed " + remove.UUID + " from the list")
 
 	io.WriteString(w, goutils.ToJson(RemoveResponse{Success:true,Item:removedItem}))
 
-	//Humm, might not want to do this after every request
-	Save()
+}
+
+func ListItems() []Item {
+	items, _ := DataBase.ReadAll("items")
+	itemList := []Item{}
+	for _, item := range items {
+		f := Item{}
+		json.Unmarshal([]byte(item), &f)
+		itemList = append(itemList, f)
+	}
+	return itemList
 }
 
 type Data struct {
@@ -138,21 +151,6 @@ type RemoveResponse struct {
 	Item Item `json:"item"`
 }
 
-func DeleteItem(uuid string) (Item, error){
-	for index, item := range Info.ItemList {
-		if item.UUID == uuid {
-			Info.ItemList = RemoveItemFromList(Info.ItemList, index)
-			return item, nil
-		}
-	}
-	return Item{}, errors.New("Failed to remove item from list")
-}
-
-func RemoveItemFromList(s []Item, i int) []Item {
-	fmt.Println("removing ", i , " from slice")
-	s[len(s)-1], s[i] = s[i], s[len(s)-1]
-	return s[:len(s)-1]
-}
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
@@ -167,28 +165,4 @@ func RandString(size int, seed int64) string {
 
 func Log(str string){
 	goutils.AppendStringToFile(str, "log.txt")
-}
-
-func Save(){
-	json := goutils.ToJson(Info)
-	goutils.WriteStringToFile(json, "data.json")
-}
-
-func Load(){
-	if !goutils.FileExists("data.json") {
-		return
-	}
-
-	jsonStr := goutils.ReadStringFromFile("data.json")
-	var readData Data
-
-	err := json.Unmarshal([]byte(jsonStr), &readData)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	Info = readData
-
-	fmt.Println("Loaded ", len(Info.ItemList), " items from data.json")
 }
