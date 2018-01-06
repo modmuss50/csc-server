@@ -47,6 +47,8 @@ func listItems(w http.ResponseWriter, r *http.Request) {
 }
 
 func addItem(w http.ResponseWriter, r *http.Request) {
+	//Sets max size to 10KB
+	r.Body = http.MaxBytesReader(w, r.Body, 10000)
 
 	b, err := ioutil.ReadAll(r.Body)
 	defer r.Body.Close()
@@ -79,6 +81,8 @@ func addItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func removeItem(w http.ResponseWriter, r *http.Request) {
+	//Sets max size to 10KB
+	r.Body = http.MaxBytesReader(w, r.Body, 10000)
 
 	b, err := ioutil.ReadAll(r.Body)
 	defer r.Body.Close()
