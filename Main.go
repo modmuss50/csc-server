@@ -12,24 +12,21 @@ import (
 	"github.com/modmuss50/goutils"
 	"github.com/nanobox-io/golang-scribble"
 	"github.com/thoas/stats"
+	"github.com/patrickmn/go-cache"
 )
 
 //Databse help: https://medium.com/@skdomino/scribble-a-tiny-json-database-in-golang-9817854deb05
 
 var (
 	DataBase *scribble.Driver
+	History *cache.Cache
 )
 
 func main() {
-
 	fmt.Println("Loading Cross Server Storage - Server")
-
 	db, _ := scribble.New("./db", nil)
 	DataBase = db
-
-	//item := Item{RegName:"Test", UUID:"123"}
-	//DataBase.Write("items", item.UUID, item)
-
+	History = cache.New(60*time.Minute, 1*time.Minute)
 	middleware := stats.New()
 	mux := http.NewServeMux()
 
@@ -37,12 +34,15 @@ func main() {
 	mux.HandleFunc("/addItem", addItem)
 	mux.HandleFunc("/removeItem", removeItem)
 	mux.HandleFunc("/coins", getCoins)
+	mux.HandleFunc("/transactions", getTransactions)
 
 	mux.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
 		b, _ := json.Marshal(middleware.Data())
 		w.Write(b)
 	})
+	fmt.Println("Done: Port: 8000")
 	http.ListenAndServe(":8000", middleware.Handler(mux))
 
 }
@@ -50,15 +50,30 @@ func main() {
 //TODO merge list and coins?
 
 func listItems(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	io.WriteString(w, goutils.ToJson(ListItems()))
 }
 
 func getCoins(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	uuid := r.Header.Get("uuid")
 	io.WriteString(w, goutils.ToJson(GetUser(uuid)))
 }
 
+func getTransactions(w http.ResponseWriter, r *http.Request) {
+	//Allows web apis to use this
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	var transactions []Transaction
+	for _, cacheItem := range History.Items() {
+		transactions = append(transactions, cacheItem.Object.(Transaction))
+	}
+
+	io.WriteString(w, goutils.ToJson(transactions))
+}
+
 func addItem(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	//Sets max size to 10KB
 	r.Body = http.MaxBytesReader(w, r.Body, 10000)
 
@@ -85,12 +100,14 @@ func addItem(w http.ResponseWriter, r *http.Request) {
 
 	DataBase.Write("items", item.UUID, item)
 	AddCoin(uuid)
+	History.Add("add_" + item.UUID, Transaction{TransactionType:"add",UserName:username,UUID:uuid,ItemName:item.RegName,Cost:1}, cache.DefaultExpiration)
 
 	Log(uuid + "(" + username + ") added " + item.UUID + " to the list")
 	io.WriteString(w, goutils.ToJson(item))
 }
 
 func removeItem(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	//Sets max size to 10KB
 	r.Body = http.MaxBytesReader(w, r.Body, 10000)
 
@@ -124,6 +141,8 @@ func removeItem(w http.ResponseWriter, r *http.Request) {
 
 	DataBase.Delete("items", remove.UUID)
 	RemoveCoin(uuid)
+
+	History.Add("remove_" + remove.UUID, Transaction{TransactionType:"remove",UserName:username,UUID:uuid,ItemName:removedItem.RegName,Cost:1}, cache.DefaultExpiration)
 
 	Log(uuid + "(" + username + ") removed " + remove.UUID + " from the list")
 

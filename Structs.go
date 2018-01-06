@@ -32,3 +32,11 @@ type User struct {
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
+
+type Transaction struct {
+	TransactionType string  `json:"type"`
+	UserName string  `json:"username"`
+	UUID string  `json:"uuid"`
+	ItemName string  `json:"itemName"`
+	Cost int  `json:"cost"`
+}
